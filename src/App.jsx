@@ -5,8 +5,10 @@ import SeriesView from './components/SeriesView.jsx';
 import ScoringView from './components/ScoringView.jsx';
 import './App.css';
 
+const API_BASE = 'https://cricket-score-manager-backend.vercel.app';
+
 async function apiFetch(path, options = {}) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE}/api${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
