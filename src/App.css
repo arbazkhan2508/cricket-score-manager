@@ -462,8 +462,59 @@ tfoot td {
   margin: 12px 0;
 }
 
+/* Who is out — two large batsman cards side by side */
+.wicket-who-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.wicket-batsman {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 8px;
+  line-height: 1.3;
+}
+.wicket-role {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.wicket-name {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.wicket-stats {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .completed-note {
   text-align: center;
+}
+
+/* ---------- stats panel ---------- */
+.stats-panel h3 {
+  margin: 0;
+}
+.stats-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 10px 0 12px;
+}
+.stats-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.stats-table-wrap table {
+  min-width: 520px;
+  font-size: 0.82rem;
+}
+.stats-table-wrap th[title] {
+  cursor: help;
 }
 
 /* ---------- series ---------- */
@@ -624,5 +675,15 @@ tfoot td {
   .match-card-foot {
     flex-wrap: wrap;
     gap: 6px;
+  }
+  .stats-table-wrap table {
+    min-width: unset;
+    font-size: 0.75rem;
+  }
+  .stats-tabs {
+    gap: 2px;
+  }
+  .wicket-who-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }

@@ -1,22 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import SeriesList from './components/SeriesList.jsx';
 import NewSeriesForm from './components/NewSeriesForm.jsx';
 import SeriesView from './components/SeriesView.jsx';
 import ScoringView from './components/ScoringView.jsx';
 import './App.css';
 
-const STORAGE_KEY = 'cricket-series-portal';
-
-function loadSeries() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? [];
-  } catch {
-    return [];
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`/api${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
   }
+  return res.json();
 }
 
 export default function App() {
-  const [seriesList, setSeriesList] = useState(loadSeries);
+  const [seriesList, setSeriesList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState('');
   // home | newSeries | series | match
   const [view, setView] = useState({ name: 'home' });
 
@@ -29,26 +33,78 @@ export default function App() {
       ? activeSeries.matches.find((m) => m.id === view.matchId)
       : null;
 
+  // ── Initial load ────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seriesList));
-  }, [seriesList]);
+    apiFetch('/series')
+      .then((data) => { setSeriesList(data); setLoading(false); })
+      .catch((err) => { setApiError(`Cannot reach backend: ${err.message}`); setLoading(false); });
+  }, []);
 
-  const addSeries = (series) => {
-    setSeriesList((list) => [series, ...list]);
-    setView({ name: 'series', seriesId: series.id });
-  };
+  // ── Series operations ────────────────────────────────────────────────────────
 
-  const updateSeries = (updated) => {
-    setSeriesList((list) => list.map((s) => (s.id === updated.id ? updated : s)));
-  };
+  const addSeries = useCallback(async (series) => {
+    try {
+      const saved = await apiFetch('/series', {
+        method: 'POST',
+        body: JSON.stringify(series),
+      });
+      setSeriesList((list) => [saved, ...list]);
+      setView({ name: 'series', seriesId: saved.id });
+    } catch (err) {
+      alert(`Failed to save series: ${err.message}`);
+    }
+  }, []);
 
-  const deleteSeries = (id) => {
-    if (!confirm('Delete this series and all its matches permanently?')) return;
-    setSeriesList((list) => list.filter((s) => s.id !== id));
-    if (view.seriesId === id) setView({ name: 'home' });
-  };
+  // Squad-only update — never touches match/innings data
+  const updateSeriesTeams = useCallback(async (seriesId, newTeams) => {
+    setSeriesList((list) =>
+      list.map((s) => (s.id === seriesId ? { ...s, teams: newTeams } : s))
+    );
+    try {
+      await apiFetch(`/series/${seriesId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ teams: newTeams }),
+      });
+    } catch (err) {
+      console.error('Squad save failed:', err.message);
+    }
+  }, []);
 
-  const updateMatch = (seriesId, match) => {
+  const deleteSeries = useCallback(
+    async (id) => {
+      if (!confirm('Delete this series and all its matches permanently?')) return;
+      setSeriesList((list) => list.filter((s) => s.id !== id));
+      if (view.seriesId === id) setView({ name: 'home' });
+      try {
+        await apiFetch(`/series/${id}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error('Delete failed:', err.message);
+      }
+    },
+    [view.seriesId]
+  );
+
+  // ── Match operations ─────────────────────────────────────────────────────────
+
+  const createMatch = useCallback((seriesId, match) => {
+    // Both state updates in one synchronous block so React batches them —
+    // activeMatch is guaranteed to be non-null when ScoringView renders.
+    setSeriesList((list) =>
+      list.map((s) =>
+        s.id === seriesId ? { ...s, matches: [...s.matches, match] } : s
+      )
+    );
+    setView({ name: 'match', seriesId, matchId: match.id });
+    // Persist to backend (fire-and-forget — optimistic update already applied)
+    apiFetch(`/series/${seriesId}/matches`, {
+      method: 'POST',
+      body: JSON.stringify(match),
+    }).catch((err) => console.error('Match create failed:', err.message));
+  }, []);
+
+  // Called on every ball — optimistic update keeps the UI instant
+  const updateMatch = useCallback(async (seriesId, match) => {
     setSeriesList((list) =>
       list.map((s) =>
         s.id === seriesId
@@ -56,7 +112,30 @@ export default function App() {
           : s
       )
     );
-  };
+    try {
+      await apiFetch(`/series/${seriesId}/matches/${match.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(match),
+      });
+    } catch (err) {
+      console.error('Match save failed:', err.message);
+    }
+  }, []);
+
+  const deleteMatch = useCallback(async (seriesId, matchId) => {
+    setSeriesList((list) =>
+      list.map((s) =>
+        s.id === seriesId
+          ? { ...s, matches: s.matches.filter((m) => m.id !== matchId) }
+          : s
+      )
+    );
+    try {
+      await apiFetch(`/series/${seriesId}/matches/${matchId}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Match delete failed:', err.message);
+    }
+  }, []);
 
   const back = () => {
     if (view.name === 'match') setView({ name: 'series', seriesId: view.seriesId });
@@ -79,26 +158,44 @@ export default function App() {
       </header>
 
       <main>
-        {view.name === 'home' && (
+        {loading && (
+          <div className="panel" style={{ textAlign: 'center', padding: '2rem' }}>
+            <p className="muted">Loading…</p>
+          </div>
+        )}
+
+        {!loading && apiError && (
+          <div className="panel" style={{ textAlign: 'center', padding: '2rem' }}>
+            <p className="error">{apiError}</p>
+            <p className="hint">
+              Start the backend first:{' '}
+              <code>cd backend &amp;&amp; npm run dev</code>
+            </p>
+          </div>
+        )}
+
+        {!loading && !apiError && view.name === 'home' && (
           <SeriesList
             seriesList={seriesList}
             onOpen={(id) => setView({ name: 'series', seriesId: id })}
             onDelete={deleteSeries}
           />
         )}
-        {view.name === 'newSeries' && (
+        {!loading && !apiError && view.name === 'newSeries' && (
           <NewSeriesForm onCreate={addSeries} onCancel={() => setView({ name: 'home' })} />
         )}
-        {view.name === 'series' && activeSeries && (
+        {!loading && !apiError && view.name === 'series' && activeSeries && (
           <SeriesView
             series={activeSeries}
-            onChange={updateSeries}
+            onSquadsChange={(teams) => updateSeriesTeams(activeSeries.id, teams)}
+            onMatchCreate={(match) => createMatch(activeSeries.id, match)}
+            onMatchDelete={(matchId) => deleteMatch(activeSeries.id, matchId)}
             onOpenMatch={(matchId) =>
               setView({ name: 'match', seriesId: activeSeries.id, matchId })
             }
           />
         )}
-        {view.name === 'match' && activeMatch && (
+        {!loading && !apiError && view.name === 'match' && activeMatch && (
           <ScoringView
             match={activeMatch}
             series={activeSeries}

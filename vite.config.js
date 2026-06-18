@@ -8,6 +8,12 @@ export default defineConfig({
     host: true, // listen on all interfaces so phones on the same Wi-Fi can open http://<pc-ip>:5180
     port: 5180,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     host: true,

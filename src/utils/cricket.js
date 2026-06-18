@@ -1,5 +1,20 @@
 // Cricket helpers and series/match model utilities
 
+// crypto.randomUUID() only works in secure contexts (HTTPS / localhost).
+// When scoring from a phone over LAN (http://192.168.x.x), use getRandomValues()
+// instead — it works in ALL browser contexts.
+function uid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // RFC-4122 v4 UUID fallback via getRandomValues
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = crypto.getRandomValues(new Uint8Array(1))[0] & 15;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export const newBatsman = (name) => ({
   name,
   runs: 0,
@@ -40,10 +55,8 @@ export const createSeries = ({
   playersA,
   playersB,
   bestOf,
-  overs,
-  powerplayOvers,
 }) => ({
-  id: crypto.randomUUID(),
+  id: uid(),
   createdAt: Date.now(),
   name,
   teams: [
@@ -51,26 +64,24 @@ export const createSeries = ({
     { name: teamB, players: playersB },
   ],
   bestOf: Number(bestOf),
-  overs: Number(overs),
-  powerplayOvers: Number(powerplayOvers),
   matches: [],
 });
 
-// Snapshot teams/rules onto the match so mid-match squad edits don't break scoring
-export const createSeriesMatch = (series, { tossWinner, decision }) => {
+// Snapshot teams + per-match overs onto the match so squad edits don't break scoring
+export const createSeriesMatch = (series, { tossWinner, decision, overs, powerplayOvers }) => {
   const [a, b] = series.teams;
   const other = tossWinner === a.name ? b.name : a.name;
   const battingFirst = decision === 'bat' ? tossWinner : other;
   const bowlingFirst = battingFirst === a.name ? b.name : a.name;
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     createdAt: Date.now(),
     matchNo: series.matches.length + 1,
     teamA: a.name,
     teamB: b.name,
     squads: { [a.name]: [...a.players], [b.name]: [...b.players] },
-    overs: series.overs,
-    powerplayOvers: series.powerplayOvers,
+    overs: Number(overs),
+    powerplayOvers: Number(powerplayOvers),
     toss: { winner: tossWinner, decision },
     status: 'live', // live | completed
     innings: [newInnings(battingFirst, bowlingFirst)],

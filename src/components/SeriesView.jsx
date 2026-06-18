@@ -1,6 +1,99 @@
 import { useState } from 'react';
 import { createSeriesMatch, oversText, seriesScore } from '../utils/cricket.js';
 
+// ── Stats computation ─────────────────────────────────────────────────────────
+
+function computeStats(series) {
+  const batting = {};
+  const bowling = {};
+
+  for (const match of series.matches ?? []) {
+    for (const inn of match.innings ?? []) {
+      for (const bat of inn.batsmen ?? []) {
+        if (!batting[bat.name]) {
+          batting[bat.name] = {
+            name: bat.name,
+            team: inn.battingTeam,
+            matchIds: new Set(),
+            innings: 0,
+            runs: 0,
+            balls: 0,
+            fours: 0,
+            sixes: 0,
+            dismissals: 0,
+            highScore: 0,
+          };
+        }
+        const p = batting[bat.name];
+        p.matchIds.add(match.id);
+        p.innings++;
+        p.runs += bat.runs;
+        p.balls += bat.balls;
+        p.fours += bat.fours;
+        p.sixes += bat.sixes;
+        if (bat.out) p.dismissals++;
+        if (bat.runs > p.highScore) p.highScore = bat.runs;
+      }
+
+      for (const bwl of inn.bowlers ?? []) {
+        if (!bowling[bwl.name]) {
+          bowling[bwl.name] = {
+            name: bwl.name,
+            team: inn.bowlingTeam,
+            matchIds: new Set(),
+            balls: 0,
+            runs: 0,
+            wickets: 0,
+          };
+        }
+        const p = bowling[bwl.name];
+        p.matchIds.add(match.id);
+        p.balls += bwl.balls;
+        p.runs += bwl.runs;
+        p.wickets += bwl.wickets;
+      }
+    }
+  }
+
+  const avg = (r, d) => (d > 0 ? (r / d).toFixed(1) : r > 0 ? 'N/O' : '-');
+  const sr = (r, b) => (b > 0 ? ((r / b) * 100).toFixed(1) : '-');
+  const econ = (r, b) => (b > 0 ? (r / (b / 6)).toFixed(1) : '-');
+  const bAvg = (r, w) => (w > 0 ? (r / w).toFixed(1) : '-');
+
+  return {
+    batting: Object.values(batting)
+      .map((p) => ({
+        name: p.name,
+        team: p.team,
+        matches: p.matchIds.size,
+        innings: p.innings,
+        runs: p.runs,
+        hs: p.highScore,
+        balls: p.balls,
+        fours: p.fours,
+        sixes: p.sixes,
+        avg: avg(p.runs, p.dismissals),
+        sr: sr(p.runs, p.balls),
+      }))
+      .sort((a, b) => b.runs - a.runs),
+
+    bowling: Object.values(bowling)
+      .map((p) => ({
+        name: p.name,
+        team: p.team,
+        matches: p.matchIds.size,
+        overs: `${Math.floor(p.balls / 6)}.${p.balls % 6}`,
+        wickets: p.wickets,
+        runs: p.runs,
+        econ: econ(p.runs, p.balls),
+        avg: bAvg(p.runs, p.wickets),
+      }))
+      .sort((a, b) => b.wickets - a.wickets || parseFloat(a.econ) - parseFloat(b.econ)),
+  };
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function MatchCard({ match, onOpen, onDelete }) {
   return (
     <div className="match-card" onClick={onOpen}>
@@ -45,6 +138,18 @@ function NewMatchPanel({ series, onStart }) {
   const [a, b] = series.teams.map((t) => t.name);
   const [tossWinner, setTossWinner] = useState(a);
   const [decision, setDecision] = useState('bat');
+  const [overs, setOvers] = useState(8);
+  const [powerplayOvers, setPowerplayOvers] = useState(2);
+  const [error, setError] = useState('');
+
+  const handleStart = () => {
+    if (overs < 1 || overs > 50) return setError('Overs must be between 1 and 50.');
+    if (powerplayOvers < 0 || powerplayOvers > overs)
+      return setError('Powerplay overs cannot exceed total overs.');
+    setError('');
+    onStart({ tossWinner, decision, overs, powerplayOvers });
+  };
+
   return (
     <div className="panel">
       <h3>Start Match {series.matches.length + 1}</h3>
@@ -65,8 +170,31 @@ function NewMatchPanel({ series, onStart }) {
           </select>
         </label>
       </div>
+      <div className="form-row">
+        <label>
+          Overs per side
+          <input
+            type="number"
+            min="1"
+            max="50"
+            value={overs}
+            onChange={(e) => setOvers(Number(e.target.value))}
+          />
+        </label>
+        <label>
+          Powerplay overs
+          <input
+            type="number"
+            min="0"
+            max="50"
+            value={powerplayOvers}
+            onChange={(e) => setPowerplayOvers(Number(e.target.value))}
+          />
+        </label>
+      </div>
+      {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button className="btn primary" onClick={() => onStart({ tossWinner, decision })}>
+        <button className="btn primary" onClick={handleStart}>
           Start Match
         </button>
       </div>
@@ -74,7 +202,7 @@ function NewMatchPanel({ series, onStart }) {
   );
 }
 
-function SquadsPanel({ series, onChange }) {
+function SquadsPanel({ series, onSquadsChange }) {
   const [editing, setEditing] = useState(false);
   const [textA, setTextA] = useState('');
   const [textB, setTextB] = useState('');
@@ -92,13 +220,10 @@ function SquadsPanel({ series, onChange }) {
     const pA = parse(textA);
     const pB = parse(textB);
     if (pA.length < 2 || pB.length < 2) return;
-    onChange({
-      ...series,
-      teams: [
-        { ...a, players: pA },
-        { ...b, players: pB },
-      ],
-    });
+    onSquadsChange([
+      { ...a, players: pA },
+      { ...b, players: pB },
+    ]);
     setEditing(false);
   };
 
@@ -158,7 +283,128 @@ function SquadsPanel({ series, onChange }) {
   );
 }
 
-export default function SeriesView({ series, onChange, onOpenMatch }) {
+function StatsPanel({ series }) {
+  const [activeTab, setActiveTab] = useState('batting');
+  const stats = computeStats(series);
+  const hasStats = stats.batting.length > 0 || stats.bowling.length > 0;
+
+  return (
+    <div className="panel stats-panel">
+      <div className="innings-head">
+        <h3>Player Stats</h3>
+      </div>
+
+      {!hasStats ? (
+        <p className="muted hint">Stats appear once matches are played.</p>
+      ) : (
+        <>
+          <div className="stats-tabs">
+            <button
+              className={`tab ${activeTab === 'batting' ? 'active' : ''}`}
+              onClick={() => setActiveTab('batting')}
+            >
+              Batting
+            </button>
+            <button
+              className={`tab ${activeTab === 'bowling' ? 'active' : ''}`}
+              onClick={() => setActiveTab('bowling')}
+            >
+              Bowling
+            </button>
+          </div>
+
+          {activeTab === 'batting' && (
+            <div className="stats-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="left">Player</th>
+                    <th className="left">Team</th>
+                    <th title="Matches played">M</th>
+                    <th title="Innings batted">Inn</th>
+                    <th title="Total runs">R</th>
+                    <th title="Highest score">HS</th>
+                    <th title="Batting average">Avg</th>
+                    <th title="Strike rate">SR</th>
+                    <th>4s</th>
+                    <th>6s</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.batting.map((p) => (
+                    <tr key={p.name}>
+                      <td className="left">
+                        <strong>{p.name}</strong>
+                      </td>
+                      <td className="left muted">{p.team}</td>
+                      <td>{p.matches}</td>
+                      <td>{p.innings}</td>
+                      <td>
+                        <strong>{p.runs}</strong>
+                      </td>
+                      <td>{p.hs}</td>
+                      <td>{p.avg}</td>
+                      <td>{p.sr}</td>
+                      <td>{p.fours}</td>
+                      <td>{p.sixes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {activeTab === 'bowling' && (
+            <div className="stats-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="left">Player</th>
+                    <th className="left">Team</th>
+                    <th title="Matches played">M</th>
+                    <th title="Overs bowled">O</th>
+                    <th title="Wickets taken">W</th>
+                    <th title="Runs conceded">R</th>
+                    <th title="Economy rate">Econ</th>
+                    <th title="Bowling average">Avg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.bowling.map((p) => (
+                    <tr key={p.name}>
+                      <td className="left">
+                        <strong>{p.name}</strong>
+                      </td>
+                      <td className="left muted">{p.team}</td>
+                      <td>{p.matches}</td>
+                      <td>{p.overs}</td>
+                      <td>
+                        <strong>{p.wickets}</strong>
+                      </td>
+                      <td>{p.runs}</td>
+                      <td>{p.econ}</td>
+                      <td>{p.avg}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+export default function SeriesView({
+  series,
+  onSquadsChange,
+  onMatchCreate,
+  onMatchDelete,
+  onOpenMatch,
+}) {
   const score = seriesScore(series);
   const [a, b] = series.teams.map((t) => t.name);
   const liveMatch = series.matches.find((m) => m.status === 'live');
@@ -166,17 +412,18 @@ export default function SeriesView({ series, onChange, onOpenMatch }) {
 
   const startMatch = (toss) => {
     const match = createSeriesMatch(series, toss);
-    onChange({ ...series, matches: [...series.matches, match] });
-    onOpenMatch(match.id);
+    // onMatchCreate handles both the state update AND navigation in one React batch
+    onMatchCreate(match);
   };
 
-  const deleteMatch = (id) => {
+  const handleDeleteMatch = (matchId) => {
     if (!confirm('Delete this match permanently?')) return;
-    onChange({ ...series, matches: series.matches.filter((m) => m.id !== id) });
+    onMatchDelete(matchId);
   };
 
   return (
     <div>
+      {/* ── Series header ── */}
       <div className="panel series-header">
         <h2>{series.name}</h2>
         <div className="series-score">
@@ -189,19 +436,20 @@ export default function SeriesView({ series, onChange, onOpenMatch }) {
         <p className={`series-status ${score.decided ? 'decided' : ''}`}>{score.text}</p>
         <div className="rule-chips">
           <span className="rule-chip">Best of {series.bestOf}</span>
-          <span className="rule-chip">{series.overs} overs/side</span>
-          <span className="rule-chip">⚡ Powerplay: first {series.powerplayOvers} ov</span>
         </div>
       </div>
 
+      {/* ── Live alert ── */}
       {liveMatch && (
         <div className="panel live-note" onClick={() => onOpenMatch(liveMatch.id)}>
           ● Match {liveMatch.matchNo} is live — tap to continue scoring
         </div>
       )}
 
+      {/* ── Start next match ── */}
       {canStartMatch && <NewMatchPanel series={series} onStart={startMatch} />}
 
+      {/* ── Match history ── */}
       {series.matches.length > 0 && (
         <div className="match-list">
           {[...series.matches].reverse().map((m) => (
@@ -209,13 +457,17 @@ export default function SeriesView({ series, onChange, onOpenMatch }) {
               key={m.id}
               match={m}
               onOpen={() => onOpenMatch(m.id)}
-              onDelete={() => deleteMatch(m.id)}
+              onDelete={() => handleDeleteMatch(m.id)}
             />
           ))}
         </div>
       )}
 
-      <SquadsPanel series={series} onChange={onChange} />
+      {/* ── Squads editor ── */}
+      <SquadsPanel series={series} onSquadsChange={onSquadsChange} />
+
+      {/* ── Per-player series stats ── */}
+      <StatsPanel series={series} />
     </div>
   );
 }

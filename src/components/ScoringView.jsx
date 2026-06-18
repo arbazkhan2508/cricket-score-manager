@@ -78,7 +78,6 @@ export default function ScoringView({ match, onChange }) {
 
   const endOfOverIfNeeded = (i) => {
     if (i.balls % 6 === 0 && i.balls > 0) {
-      // swap strike, demand a (possibly new) bowler for next over
       i.lastOverBowler = i.bowlerIdx !== null ? i.bowlers[i.bowlerIdx].name : null;
       [i.strikerIdx, i.nonStrikerIdx] = [i.nonStrikerIdx, i.strikerIdx];
       i.bowlerIdx = null;
@@ -136,23 +135,17 @@ export default function ScoringView({ match, onChange }) {
     checkProgress(m, i);
   };
 
-  // Run buttons: runs off the bat, recorded immediately
   const scoreRuns = (n) => {
     setFollowUp(null);
     apply((m, i) => applyDelivery(m, i, n, 'none'));
   };
 
-  // Extra buttons: one click records the delivery instantly
-  // (wide/no-ball = 1 run, bye/leg-bye = 1 run), then a follow-up
-  // bar lets the user bump the runs taken on that same delivery.
   const recordExtra = (mode) => {
     const base = mode === 'bye' || mode === 'legbye' ? 1 : 0;
     apply((m, i) => applyDelivery(m, i, base, mode));
     setFollowUp(mode);
   };
 
-  // Re-record the just-scored extra with more runs: rebuild from the
-  // snapshot taken before it, so totals/strike/over state stay exact.
   const adjustExtra = (mode, n) => {
     const prev = history[history.length - 1];
     if (!prev) return;
@@ -162,26 +155,46 @@ export default function ScoringView({ match, onChange }) {
     setFollowUp(null);
   };
 
-  const recordWicket = (how, runsCompleted) => {
+  // who: 'striker' | 'nonstriker'
+  // how: dismissal type string
+  // runsCompleted: number (only relevant for Run out)
+  const recordWicket = (who, how, runsCompleted) => {
     setWicketOpen(false);
     setFollowUp(null);
     apply((m, i) => {
-      const bat = i.batsmen[i.strikerIdx];
+      const strikerBat = i.batsmen[i.strikerIdx];
+      const outIdx = who === 'striker' ? i.strikerIdx : i.nonStrikerIdx;
+      const outBat = i.batsmen[outIdx];
       const bwl = i.bowlers[i.bowlerIdx];
-      const credit = how !== 'Run out';
+      const creditBowler = how !== 'Run out';
 
+      // Striker always faces the ball — gets runs and ball counted
       i.runs += runsCompleted;
-      bat.runs += runsCompleted;
-      bat.balls += 1;
-      bat.out = true;
-      bat.outDesc = credit ? `${how.toLowerCase()} b ${bwl.name}` : 'run out';
+      strikerBat.runs += runsCompleted;
+      strikerBat.balls += 1;
+
+      // Mark the correct batsman out
+      outBat.out = true;
+      outBat.outDesc = creditBowler
+        ? `${how.toLowerCase()} b ${bwl.name}`
+        : 'run out';
+
+      // Bowler stats
       bwl.balls += 1;
       bwl.runs += runsCompleted;
-      if (credit) bwl.wickets += 1;
+      if (creditBowler) bwl.wickets += 1;
+
       i.balls += 1;
       i.wickets += 1;
       i.thisOver.push(runsCompleted ? `W+${runsCompleted}` : 'W');
-      i.strikerIdx = null; // demand new batsman
+
+      // Vacate the dismissed batsman's slot — a new player will be picked next
+      if (who === 'striker') {
+        i.strikerIdx = null;
+      } else {
+        i.nonStrikerIdx = null;
+      }
+
       endOfOverIfNeeded(i);
       checkProgress(m, i);
     });
@@ -194,7 +207,7 @@ export default function ScoringView({ match, onChange }) {
     });
   };
 
-  // ---- setup actions (players come from the squad list) ----
+  // ---- setup actions ----
   const addOpeners = (s, ns) =>
     apply((m, i) => {
       i.batsmen.push(newBatsman(s), newBatsman(ns));
@@ -376,7 +389,12 @@ export default function ScoringView({ match, onChange }) {
                   <div className="follow-up">
                     <span className="hint">
                       Batsmen ran more on that{' '}
-                      {followUp === 'noball' ? 'no ball' : followUp === 'legbye' ? 'leg bye' : followUp}? Set total runs:
+                      {followUp === 'noball'
+                        ? 'no ball'
+                        : followUp === 'legbye'
+                        ? 'leg bye'
+                        : followUp}
+                      ? Set total runs:
                     </span>
                     <div className="extra-toggles">
                       {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -385,7 +403,9 @@ export default function ScoringView({ match, onChange }) {
                           className="btn small"
                           onClick={() => adjustExtra(followUp, n)}
                         >
-                          {followUp === 'wide' || followUp === 'noball' ? `+${n} run${n > 1 ? 's' : ''}` : `${n} run${n > 1 ? 's' : ''}`}
+                          {followUp === 'wide' || followUp === 'noball'
+                            ? `+${n} run${n > 1 ? 's' : ''}`
+                            : `${n} run${n > 1 ? 's' : ''}`}
                         </button>
                       ))}
                       <button className="btn small" onClick={() => setFollowUp(null)}>
@@ -399,7 +419,7 @@ export default function ScoringView({ match, onChange }) {
                     ⇄ Swap Strike
                   </button>
                   <button className="btn" onClick={undo} disabled={history.length === 0}>
-                    ↩ Undo
+                    ↩ Undo Last Ball
                   </button>
                 </div>
               </div>
@@ -412,22 +432,27 @@ export default function ScoringView({ match, onChange }) {
                 <strong>{match.result}</strong>
               </p>
               <button className="btn" onClick={undo} disabled={history.length === 0}>
-                ↩ Undo last ball
+                ↩ Undo Last Ball
               </button>
             </div>
           )}
         </>
       )}
 
-      {wicketOpen && (
-        <WicketModal onCancel={() => setWicketOpen(false)} onConfirm={recordWicket} />
+      {wicketOpen && striker && nonStriker && (
+        <WicketModal
+          striker={striker}
+          nonStriker={nonStriker}
+          onCancel={() => setWicketOpen(false)}
+          onConfirm={recordWicket}
+        />
       )}
     </div>
   );
 }
 
 function OpenersPicker({ team, squad, onSubmit }) {
-  const [picked, setPicked] = useState([]); // first pick takes strike
+  const [picked, setPicked] = useState([]);
 
   const toggle = (name) => {
     setPicked((p) =>
@@ -486,7 +511,7 @@ function BowlerPicker({ squad, bowlers, lastOverBowler, team, onPick }) {
     <div className="panel setup-form">
       <h3>Select bowler — {team}</h3>
       {lastOverBowler && (
-        <p className="hint">{lastOverBowler} bowled the last over and can’t bowl this one.</p>
+        <p className="hint">{lastOverBowler} bowled the last over and can't bowl this one.</p>
       )}
       <div className="player-grid">
         {squad.map((name) => {
@@ -508,13 +533,45 @@ function BowlerPicker({ squad, bowlers, lastOverBowler, team, onPick }) {
   );
 }
 
-function WicketModal({ onCancel, onConfirm }) {
+function WicketModal({ striker, nonStriker, onCancel, onConfirm }) {
+  const [who, setWho] = useState('striker'); // 'striker' | 'nonstriker'
   const [how, setHow] = useState('Bowled');
   const [runs, setRuns] = useState(0);
+
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal panel" onClick={(e) => e.stopPropagation()}>
-        <h3>Wicket! How was the striker out?</h3>
+        <h3>Wicket!</h3>
+
+        <p className="hint" style={{ marginBottom: '0.5rem' }}>
+          Who is out?
+        </p>
+        <div className="wicket-who-grid">
+          <button
+            className={`btn toggle wicket-batsman ${who === 'striker' ? 'on' : ''}`}
+            onClick={() => setWho('striker')}
+          >
+            <span className="wicket-role">Striker</span>
+            <span className="wicket-name">{striker.name} *</span>
+            <span className="wicket-stats">
+              {striker.runs} ({striker.balls})
+            </span>
+          </button>
+          <button
+            className={`btn toggle wicket-batsman ${who === 'nonstriker' ? 'on' : ''}`}
+            onClick={() => setWho('nonstriker')}
+          >
+            <span className="wicket-role">Non-striker</span>
+            <span className="wicket-name">{nonStriker.name}</span>
+            <span className="wicket-stats">
+              {nonStriker.runs} ({nonStriker.balls})
+            </span>
+          </button>
+        </div>
+
+        <p className="hint" style={{ margin: '1rem 0 0.5rem' }}>
+          How out?
+        </p>
         <div className="dismissal-grid">
           {DISMISSALS.map((d) => (
             <button
@@ -526,8 +583,9 @@ function WicketModal({ onCancel, onConfirm }) {
             </button>
           ))}
         </div>
+
         {how === 'Run out' && (
-          <label>
+          <label style={{ marginTop: '0.75rem', display: 'block' }}>
             Runs completed before run out
             <input
               type="number"
@@ -538,15 +596,16 @@ function WicketModal({ onCancel, onConfirm }) {
             />
           </label>
         )}
+
         <div className="form-actions">
           <button className="btn" onClick={onCancel}>
             Cancel
           </button>
           <button
             className="btn danger"
-            onClick={() => onConfirm(how, how === 'Run out' ? runs : 0)}
+            onClick={() => onConfirm(who, how, how === 'Run out' ? runs : 0)}
           >
-            Confirm Wicket
+            Confirm — {who === 'striker' ? striker.name : nonStriker.name} out
           </button>
         </div>
       </div>

@@ -16,8 +16,6 @@ export default function NewSeriesForm({ onCreate, onCancel }) {
   const [playersA, setPlayersA] = useState('');
   const [playersB, setPlayersB] = useState('');
   const [bestOf, setBestOf] = useState(3);
-  const [overs, setOvers] = useState(8);
-  const [powerplayOvers, setPowerplayOvers] = useState(2);
   const [error, setError] = useState('');
 
   const submit = (e) => {
@@ -31,9 +29,6 @@ export default function NewSeriesForm({ onCreate, onCancel }) {
     const pB = parsePlayers(playersB);
     if (pA.length < 2 || pB.length < 2)
       return setError('Each team needs at least 2 players (one name per line).');
-    if (overs < 1 || overs > 50) return setError('Overs must be between 1 and 50.');
-    if (powerplayOvers < 0 || powerplayOvers > overs)
-      return setError('Powerplay overs cannot exceed total overs.');
     onCreate(
       createSeries({
         name: name.trim() || `${a} vs ${b}`,
@@ -42,8 +37,6 @@ export default function NewSeriesForm({ onCreate, onCancel }) {
         playersA: pA,
         playersB: pB,
         bestOf,
-        overs,
-        powerplayOvers,
       })
     );
   };
@@ -52,8 +45,8 @@ export default function NewSeriesForm({ onCreate, onCancel }) {
     <form className="panel new-match" onSubmit={submit}>
       <h2>New Series</h2>
       <p className="hint">
-        Set up the teams and turf rules once — every match in the series uses them, and
-        you pick batsmen &amp; bowlers from these squads while scoring.
+        Set up the teams once — overs and powerplay are chosen per match when you start each
+        game, so different matches in the series can have different over counts.
       </p>
 
       <label>
@@ -104,29 +97,6 @@ export default function NewSeriesForm({ onCreate, onCancel }) {
             <option value={2}>2 matches</option>
             <option value={3}>3 matches</option>
           </select>
-        </label>
-        <label>
-          Overs per side
-          <input
-            type="number"
-            min="1"
-            max="50"
-            value={overs}
-            onChange={(e) => setOvers(Number(e.target.value))}
-          />
-        </label>
-      </div>
-
-      <div className="form-row">
-        <label>
-          Powerplay overs
-          <input
-            type="number"
-            min="0"
-            max="50"
-            value={powerplayOvers}
-            onChange={(e) => setPowerplayOvers(Number(e.target.value))}
-          />
         </label>
       </div>
 

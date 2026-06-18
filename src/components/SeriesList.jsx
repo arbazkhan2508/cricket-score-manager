@@ -36,7 +36,7 @@ export default function SeriesList({ seriesList, onOpen, onDelete }) {
             </div>
             <div className="match-card-foot">
               <span className="result-text">
-                {score.text} · {s.matches.length}/{s.bestOf} matches · {s.overs} ov
+                {score.text} · {s.matches.length}/{s.bestOf} matches
               </span>
               <button
                 className="btn small danger"
