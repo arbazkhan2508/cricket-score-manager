@@ -44,9 +44,9 @@ export default function NewSeriesForm({ onCreate, onCancel }) {
   return (
     <form className="panel new-match" onSubmit={submit}>
       <h2>New Series</h2>
-      <p className="hint">
-        Set up the teams once — overs and powerplay are chosen per match when you start each
-        game, so different matches in the series can have different over counts.
+      <p className="hint" style={{ marginBottom: 18 }}>
+        Set up teams once. Overs and powerplay are set per match — different games in the
+        same series can have different over counts.
       </p>
 
       <label>

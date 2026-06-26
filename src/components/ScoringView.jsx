@@ -23,6 +23,54 @@ export default function ScoringView({ match, onChange }) {
   const [wicketOpen, setWicketOpen] = useState(false);
   const [tab, setTab] = useState('score'); // score | card
 
+  // ---- toss / reset (must be before any early return) ----
+  const hasToss = Boolean(match.toss) && match.innings.length > 0;
+
+  const applyToss = ({ tossWinner, decision, battingFirst, bowlingFirst }) => {
+    setHistory([]);
+    setFollowUp(null);
+    onChange({
+      ...match,
+      toss: { winner: tossWinner, decision },
+      innings: [newInnings(battingFirst, bowlingFirst)],
+      currentInnings: 0,
+      status: 'live',
+      result: '',
+      winner: null,
+    });
+  };
+
+  const resetMatch = () => {
+    if (!confirm('Reset this match to the toss? All scoring data will be lost.')) return;
+    setHistory([]);
+    setFollowUp(null);
+    setWicketOpen(false);
+    onChange({
+      ...match,
+      toss: null,
+      innings: [],
+      currentInnings: 0,
+      status: 'live',
+      result: '',
+      winner: null,
+    });
+  };
+
+  if (!hasToss) {
+    return (
+      <div className="scoring">
+        <div className="panel score-header">
+          <div className="score-header-top">
+            <h2>Match {match.matchNo} · {match.teamA} vs {match.teamB}</h2>
+            <span className="badge live">● LIVE</span>
+          </div>
+          <p className="toss-line muted">{match.overs} overs · {match.powerplayOvers} PP overs</p>
+        </div>
+        <TossPicker match={match} onConfirm={applyToss} />
+      </div>
+    );
+  }
+
   const inn = match.innings[match.currentInnings];
   const striker = inn.strikerIdx !== null ? inn.batsmen[inn.strikerIdx] : null;
   const nonStriker = inn.nonStrikerIdx !== null ? inn.batsmen[inn.nonStrikerIdx] : null;
@@ -273,34 +321,51 @@ export default function ScoringView({ match, onChange }) {
         <p className="toss-line muted">
           Toss: {match.toss.winner} chose to {match.toss.decision} first
         </p>
+        <div className="batting-label">{inn.battingTeam}</div>
         <div className="big-score">
-          <span className="team-name">{inn.battingTeam}</span>
           <span className="score-num">
             {inn.runs}/{inn.wickets}
           </span>
           <span className="overs-num">
             ({oversText(inn.balls)}/{match.overs} ov)
           </span>
-          {powerplay && <span className="badge powerplay">⚡ POWERPLAY</span>}
+          {powerplay && <span className="badge powerplay">⚡ PP</span>}
         </div>
         <div className="score-meta">
-          <span>CRR: {runRate(inn.runs, inn.balls)}</span>
-          {tgt !== null && match.status === 'live' && (
-            <span>
-              Target: {tgt} · Need {Math.max(0, tgt - inn.runs)} off{' '}
-              {match.overs * 6 - inn.balls} balls
-            </span>
-          )}
+          <span>CRR {runRate(inn.runs, inn.balls)}</span>
           {match.result && <strong className="result-banner">{match.result}</strong>}
         </div>
+
+        {tgt !== null && match.status === 'live' && (
+          <div className="chase-bar-wrap">
+            <div className="chase-label">
+              <span>Target {tgt}</span>
+              <span className="need">
+                Need {Math.max(0, tgt - inn.runs)} off {match.overs * 6 - inn.balls} balls
+              </span>
+            </div>
+            <div className="chase-track">
+              <div
+                className="chase-fill"
+                style={{ width: `${Math.min(100, (inn.runs / tgt) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {inn.thisOver.length > 0 && (
           <div className="this-over">
-            This over:{' '}
-            {inn.thisOver.map((b, idx) => (
-              <span key={idx} className={`ball-chip ${b.startsWith('W') ? 'w' : ''}`}>
-                {b}
-              </span>
-            ))}
+            <div className="this-over-label">This over</div>
+            <div className="balls-row">
+              {inn.thisOver.map((b, idx) => {
+                const cls = b.startsWith('W') ? 'w' : b === '4' ? 'four' : b === '6' ? 'six' : '';
+                return (
+                  <span key={idx} className={`ball-chip${cls ? ` ${cls}` : ''}`}>
+                    {b}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -390,30 +455,28 @@ export default function ScoringView({ match, onChange }) {
               </div>
 
               <div className="panel controls">
-                <p className="hint">Runs off the bat — recorded instantly:</p>
+                <p className="hint">Runs</p>
                 <div className="run-buttons">
                   {[0, 1, 2, 3, 4, 5, 6].map((n) => (
                     <button
                       key={n}
-                      className={`btn run ${n === 4 ? 'four' : ''} ${n === 6 ? 'six' : ''}`}
+                      className={`btn run ${n === 4 ? 'four' : n === 6 ? 'six' : ''}`}
                       onClick={() => scoreRuns(n)}
                     >
-                      {n}
+                      {n === 0 ? '·' : n}
                     </button>
                   ))}
                   <button className="btn run wicket" onClick={() => setWicketOpen(true)}>
                     W
                   </button>
                 </div>
-                <p className="hint">
-                  Extras — one tap adds the run and updates the score immediately:
-                </p>
+                <p className="hint">Extras</p>
                 <div className="extra-toggles">
                   {[
-                    ['wide', 'Wide +1'],
-                    ['noball', 'No Ball +1'],
-                    ['bye', 'Bye +1'],
-                    ['legbye', 'Leg Bye +1'],
+                    ['wide', 'Wide'],
+                    ['noball', 'No Ball'],
+                    ['bye', 'Bye'],
+                    ['legbye', 'Leg Bye'],
                   ].map(([mode, label]) => (
                     <button key={mode} className="btn" onClick={() => recordExtra(mode)}>
                       {label}
@@ -422,15 +485,9 @@ export default function ScoringView({ match, onChange }) {
                 </div>
                 {followUp && (
                   <div className="follow-up">
-                    <span className="hint">
-                      Batsmen ran more on that{' '}
-                      {followUp === 'noball'
-                        ? 'no ball'
-                        : followUp === 'legbye'
-                        ? 'leg bye'
-                        : followUp}
-                      ? Set total runs:
-                    </span>
+                    <p className="hint">
+                      Runs scored on that {followUp === 'noball' ? 'no ball' : followUp === 'legbye' ? 'leg bye' : followUp}?
+                    </p>
                     <div className="extra-toggles">
                       {[1, 2, 3, 4, 5, 6].map((n) => (
                         <button
@@ -456,6 +513,9 @@ export default function ScoringView({ match, onChange }) {
                   <button className="btn" onClick={undo} disabled={history.length === 0}>
                     ↩ Undo Last Ball
                   </button>
+                  <button className="btn danger small" onClick={resetMatch}>
+                    ↺ Reset
+                  </button>
                 </div>
               </div>
             </>
@@ -466,9 +526,14 @@ export default function ScoringView({ match, onChange }) {
               <p>
                 <strong>{match.result}</strong>
               </p>
-              <button className="btn" onClick={undo} disabled={history.length === 0}>
-                ↩ Undo Last Ball
-              </button>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="btn" onClick={undo} disabled={history.length === 0}>
+                  ↩ Undo Last Ball
+                </button>
+                <button className="btn danger" onClick={resetMatch}>
+                  ↺ Reset Match
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -660,6 +725,46 @@ function WicketModal({ striker, nonStriker, onCancel, onConfirm }) {
             Confirm — {who === 'striker' ? striker.name : nonStriker.name} out
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TossPicker({ match, onConfirm }) {
+  const [tossWinner, setTossWinner] = useState(match.teamA);
+  const [decision, setDecision] = useState('bat');
+
+  const handleConfirm = () => {
+    const other = tossWinner === match.teamA ? match.teamB : match.teamA;
+    const battingFirst = decision === 'bat' ? tossWinner : other;
+    const bowlingFirst = battingFirst === match.teamA ? match.teamB : match.teamA;
+    onConfirm({ tossWinner, decision, battingFirst, bowlingFirst });
+  };
+
+  return (
+    <div className="panel setup-form">
+      <h3>Record the Toss</h3>
+      <p className="hint">Do the toss on the turf, then record it here to start scoring.</p>
+      <div className="form-row">
+        <label>
+          Toss won by
+          <select value={tossWinner} onChange={(e) => setTossWinner(e.target.value)}>
+            <option value={match.teamA}>{match.teamA}</option>
+            <option value={match.teamB}>{match.teamB}</option>
+          </select>
+        </label>
+        <label>
+          Elected to
+          <select value={decision} onChange={(e) => setDecision(e.target.value)}>
+            <option value="bat">Bat first</option>
+            <option value="bowl">Bowl first</option>
+          </select>
+        </label>
+      </div>
+      <div className="form-actions">
+        <button className="btn primary" onClick={handleConfirm}>
+          Confirm Toss &amp; Start
+        </button>
       </div>
     </div>
   );

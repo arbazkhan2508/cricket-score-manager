@@ -152,8 +152,8 @@ function NewMatchPanel({ series, onStart }) {
 
   return (
     <div className="panel">
-      <h3>Start Match {series.matches.length + 1}</h3>
-      <p className="hint">Do the toss on the turf, then record it here.</p>
+      <h3 style={{ marginBottom: 4 }}>Match {series.matches.length + 1}</h3>
+      <p className="hint">Record the toss result, then start scoring.</p>
       <div className="form-row">
         <label>
           Toss won by

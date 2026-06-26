@@ -197,7 +197,9 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1 onClick={() => setView({ name: 'home' })}>🏏 Turf Series Portal</h1>
+        <h1 onClick={() => setView({ name: 'home' })}>
+          🏏 <span style={{ color: 'var(--gold)' }}>Turf</span> Cricket
+        </h1>
         {view.name === 'home' ? (
           <button className="btn primary" onClick={() => setView({ name: 'newSeries' })}>
             + New Series
@@ -211,17 +213,17 @@ export default function App() {
 
       <main>
         {loading && (
-          <div className="panel" style={{ textAlign: 'center', padding: '2rem' }}>
+          <div className="empty">
+            <p style={{ fontSize: '1.5rem', marginBottom: 10 }}>⏳</p>
             <p className="muted">Loading…</p>
           </div>
         )}
 
         {!loading && apiError && (
-          <div className="panel" style={{ textAlign: 'center', padding: '2rem' }}>
-            <p className="error">{apiError}</p>
+          <div className="panel" style={{ textAlign: 'center', padding: '24px' }}>
+            <p className="error" style={{ marginBottom: 8 }}>{apiError}</p>
             <p className="hint">
-              Start the backend first:{' '}
-              <code>cd backend &amp;&amp; npm run dev</code>
+              Start the backend: <code style={{ color: 'var(--gold)', fontSize: '0.8rem' }}>cd backend &amp;&amp; npm run dev</code>
             </p>
           </div>
         )}
