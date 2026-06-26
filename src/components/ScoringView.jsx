@@ -31,14 +31,15 @@ export default function ScoringView({ match, onChange }) {
   const battingSquad = squadOf(match, inn.battingTeam);
   const bowlingSquad = squadOf(match, inn.bowlingTeam);
   const usedNames = new Set(inn.batsmen.map((b) => b.name));
-  const availableBatsmen = battingSquad.filter((n) => !usedNames.has(n));
+  const retiredBatsmen = inn.batsmen.filter((b) => b.retired);
+  const availableNewBatsmen = battingSquad.filter((n) => !usedNames.has(n));
 
   const needsOpeners = match.status === 'live' && inn.batsmen.length === 0;
   const needsNewBatsman =
     match.status === 'live' &&
     !needsOpeners &&
     (inn.strikerIdx === null || inn.nonStrikerIdx === null) &&
-    availableBatsmen.length > 0;
+    (availableNewBatsmen.length > 0 || retiredBatsmen.length > 0);
   const needsBowler =
     match.status === 'live' && !needsOpeners && !needsNewBatsman && inn.bowlerIdx === null;
   const canScore = match.status === 'live' && !needsOpeners && !needsNewBatsman && !needsBowler;
@@ -215,12 +216,31 @@ export default function ScoringView({ match, onChange }) {
       i.nonStrikerIdx = 1;
     });
 
+  const retireBatsman = (who) =>
+    apply((m, i) => {
+      const idx = who === 'striker' ? i.strikerIdx : i.nonStrikerIdx;
+      if (idx === null) return;
+      i.batsmen[idx].retired = true;
+      if (who === 'striker') i.strikerIdx = null;
+      else i.nonStrikerIdx = null;
+      // No wicket increment — retirement is not a dismissal
+    });
+
   const addNextBatsman = (name) =>
     apply((m, i) => {
-      i.batsmen.push(newBatsman(name));
-      const idx = i.batsmen.length - 1;
-      if (i.strikerIdx === null) i.strikerIdx = idx;
-      else i.nonStrikerIdx = idx;
+      const retiredIdx = i.batsmen.findIndex((b) => b.name === name && b.retired);
+      if (retiredIdx >= 0) {
+        // Bring back a retired batsman at any position
+        i.batsmen[retiredIdx].retired = false;
+        if (i.strikerIdx === null) i.strikerIdx = retiredIdx;
+        else i.nonStrikerIdx = retiredIdx;
+      } else {
+        // Fresh new batsman
+        i.batsmen.push(newBatsman(name));
+        const idx = i.batsmen.length - 1;
+        if (i.strikerIdx === null) i.strikerIdx = idx;
+        else i.nonStrikerIdx = idx;
+      }
     });
 
   const setBowlerByName = (name) =>
@@ -315,7 +335,8 @@ export default function ScoringView({ match, onChange }) {
           {needsNewBatsman && (
             <PlayerPicker
               title={`New batsman in for ${inn.battingTeam}`}
-              players={availableBatsmen}
+              players={availableNewBatsmen}
+              retiredPlayers={retiredBatsmen}
               onPick={addNextBatsman}
             />
           )}
@@ -338,12 +359,26 @@ export default function ScoringView({ match, onChange }) {
                     <span>
                       {striker.runs} ({striker.balls})
                     </span>
+                    <button
+                      className="btn small"
+                      onClick={() => retireBatsman('striker')}
+                      title="Retire this batsman — they can return later at any position"
+                    >
+                      Retire
+                    </button>
                   </div>
                   <div className="player-line">
                     <span>{nonStriker.name}</span>
                     <span>
                       {nonStriker.runs} ({nonStriker.balls})
                     </span>
+                    <button
+                      className="btn small"
+                      onClick={() => retireBatsman('nonstriker')}
+                      title="Retire this batsman — they can return later at any position"
+                    >
+                      Retire
+                    </button>
                   </div>
                 </div>
                 <div className="bowler-now">
@@ -490,17 +525,34 @@ function OpenersPicker({ team, squad, onSubmit }) {
   );
 }
 
-function PlayerPicker({ title, players, onPick }) {
+function PlayerPicker({ title, players, retiredPlayers = [], onPick }) {
   return (
     <div className="panel setup-form">
       <h3>{title}</h3>
-      <div className="player-grid">
-        {players.map((name) => (
-          <button key={name} className="btn" onClick={() => onPick(name)}>
-            {name}
-          </button>
-        ))}
-      </div>
+      {retiredPlayers.length > 0 && (
+        <>
+          <p className="hint">Retired — can bat at any position:</p>
+          <div className="player-grid">
+            {retiredPlayers.map((b) => (
+              <button key={b.name} className="btn retire-return" onClick={() => onPick(b.name)}>
+                ↩ {b.name} · {b.runs}({b.balls})
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {players.length > 0 && (
+        <>
+          {retiredPlayers.length > 0 && <p className="hint">New batsmen:</p>}
+          <div className="player-grid">
+            {players.map((name) => (
+              <button key={name} className="btn" onClick={() => onPick(name)}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

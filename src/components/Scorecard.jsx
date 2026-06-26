@@ -48,7 +48,7 @@ function InningsCard({ inn, index, isCurrent, match }) {
                   {b.name}
                   {isCurrent && i === inn.strikerIdx && !b.out ? ' *' : ''}
                 </td>
-                <td className="left muted">{b.out ? b.outDesc : 'not out'}</td>
+                <td className="left muted">{b.out ? b.outDesc : b.retired ? 'retired' : 'not out'}</td>
                 <td>
                   <strong>{b.runs}</strong>
                 </td>

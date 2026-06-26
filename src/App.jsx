@@ -58,20 +58,70 @@ export default function App() {
     }
   }, []);
 
-  // Squad-only update — never touches match/innings data
   const updateSeriesTeams = useCallback(async (seriesId, newTeams) => {
+    const currentSeries = seriesList.find((s) => s.id === seriesId);
+    const oldTeams = currentSeries?.teams ?? [];
+
+    // Build old→new name mapping for any renamed teams
+    const nameMap = {};
+    for (let i = 0; i < Math.min(oldTeams.length, newTeams.length); i++) {
+      if (oldTeams[i].name !== newTeams[i].name) {
+        nameMap[oldTeams[i].name] = newTeams[i].name;
+      }
+    }
+    const hasRenames = Object.keys(nameMap).length > 0;
+    const nm = (n) => (n && nameMap[n]) ? nameMap[n] : n;
+
+    // Cascade renames to all match records in the series
+    const updatedMatches = hasRenames && currentSeries
+      ? currentSeries.matches.map((m) => ({
+          ...m,
+          teamA: nm(m.teamA),
+          teamB: nm(m.teamB),
+          winner: m.winner === 'tie' ? 'tie' : nm(m.winner),
+          squads: Object.fromEntries(
+            Object.entries(m.squads ?? {}).map(([k, v]) => [nm(k), v])
+          ),
+          toss: m.toss ? { ...m.toss, winner: nm(m.toss.winner) } : m.toss,
+          innings: (m.innings ?? []).map((inn) => ({
+            ...inn,
+            battingTeam: nm(inn.battingTeam),
+            bowlingTeam: nm(inn.bowlingTeam),
+          })),
+        }))
+      : currentSeries?.matches;
+
     setSeriesList((list) =>
-      list.map((s) => (s.id === seriesId ? { ...s, teams: newTeams } : s))
+      list.map((s) => {
+        if (s.id !== seriesId) return s;
+        return {
+          ...s,
+          teams: newTeams,
+          ...(hasRenames && updatedMatches ? { matches: updatedMatches } : {}),
+        };
+      })
     );
+
     try {
       await apiFetch(`/series/${seriesId}`, {
         method: 'PUT',
         body: JSON.stringify({ teams: newTeams }),
       });
+      // Sync renamed match records to backend
+      if (hasRenames && updatedMatches) {
+        await Promise.all(
+          updatedMatches.map((m) =>
+            apiFetch(`/series/${seriesId}/matches/${m.id}`, {
+              method: 'PUT',
+              body: JSON.stringify(m),
+            }).catch((err) => console.error(`Match rename sync failed for ${m.id}:`, err.message))
+          )
+        );
+      }
     } catch (err) {
       console.error('Squad save failed:', err.message);
     }
-  }, []);
+  }, [seriesList]);
 
   const deleteSeries = useCallback(
     async (id) => {

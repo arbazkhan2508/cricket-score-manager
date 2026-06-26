@@ -23,6 +23,7 @@ export const newBatsman = (name) => ({
   sixes: 0,
   out: false,
   outDesc: '',
+  retired: false,
 });
 
 export const newBowler = (name) => ({

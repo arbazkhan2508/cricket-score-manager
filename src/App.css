@@ -96,6 +96,11 @@ button,
   border-color: var(--green);
   font-weight: 600;
 }
+.btn.retire-return {
+  background: #3a2e10;
+  border-color: var(--amber);
+  color: var(--amber);
+}
 
 .badge {
   font-size: 0.7rem;

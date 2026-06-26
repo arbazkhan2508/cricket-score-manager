@@ -204,11 +204,15 @@ function NewMatchPanel({ series, onStart }) {
 
 function SquadsPanel({ series, onSquadsChange }) {
   const [editing, setEditing] = useState(false);
+  const [nameA, setNameA] = useState('');
+  const [nameB, setNameB] = useState('');
   const [textA, setTextA] = useState('');
   const [textB, setTextB] = useState('');
   const [a, b] = series.teams;
 
   const startEdit = () => {
+    setNameA(a.name);
+    setNameB(b.name);
     setTextA(a.players.join('\n'));
     setTextB(b.players.join('\n'));
     setEditing(true);
@@ -219,10 +223,12 @@ function SquadsPanel({ series, onSquadsChange }) {
       [...new Set(t.split('\n').map((l) => l.trim()).filter(Boolean))];
     const pA = parse(textA);
     const pB = parse(textB);
+    const finalNameA = nameA.trim() || a.name;
+    const finalNameB = nameB.trim() || b.name;
     if (pA.length < 2 || pB.length < 2) return;
     onSquadsChange([
-      { ...a, players: pA },
-      { ...b, players: pB },
+      { name: finalNameA, players: pA },
+      { name: finalNameB, players: pB },
     ]);
     setEditing(false);
   };
@@ -230,7 +236,7 @@ function SquadsPanel({ series, onSquadsChange }) {
   return (
     <div className="panel">
       <div className="innings-head">
-        <h3>Squads</h3>
+        <h3>Teams &amp; Squads</h3>
         {!editing ? (
           <button className="btn small" onClick={startEdit}>
             ✎ Edit
@@ -249,16 +255,36 @@ function SquadsPanel({ series, onSquadsChange }) {
       {editing ? (
         <>
           <p className="hint">
-            One name per line. Changes apply to future matches only — matches already
-            started keep their squads.
+            You can rename teams and edit player lists. Team renames apply to all matches.
+            Player changes apply to future matches only.
           </p>
           <div className="form-row">
             <label>
-              {a.name}
+              Team name
+              <input
+                type="text"
+                value={nameA}
+                onChange={(e) => setNameA(e.target.value)}
+                placeholder={a.name}
+              />
+            </label>
+            <label>
+              Team name
+              <input
+                type="text"
+                value={nameB}
+                onChange={(e) => setNameB(e.target.value)}
+                placeholder={b.name}
+              />
+            </label>
+          </div>
+          <div className="form-row">
+            <label>
+              {nameA || a.name} players (one per line)
               <textarea rows={9} value={textA} onChange={(e) => setTextA(e.target.value)} />
             </label>
             <label>
-              {b.name}
+              {nameB || b.name} players (one per line)
               <textarea rows={9} value={textB} onChange={(e) => setTextB(e.target.value)} />
             </label>
           </div>
